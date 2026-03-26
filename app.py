@@ -5,13 +5,14 @@ import requests
 app = Flask(__name__)
 
 # --- CONFIGURACIÓN ---
-API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "AIzaSyAEaaRxgJA1SsPTM8C0ihgNMyiyM3B1AHU")
+# Render leerá la API KEY de las variables de entorno para mayor seguridad
+API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "TU_API_KEY_AQUI")
 NUMERO_WHATSAPP = "13478978768"
 NUMERO_SMS = "13478978768"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -67,25 +68,25 @@ HTML_TEMPLATE = """
 <div class="side-panel">
     <header>
         <div class="logo">RapidWave<span style="color:var(--primary)">.</span></div>
-        <button class="lang-btn" id="lang-switch" onclick="toggleLanguage()">EN</button>
+        <button class="lang-btn" id="lang-switch" onclick="toggleLanguage()">ES</button>
     </header>
 
     <div id="stops-container">
-        <div class="input-group"><input type="text" class="stop-input" id="p1" placeholder="Punto de Recogida"></div>
-        <div class="input-group"><input type="text" class="stop-input" id="p2" placeholder="Destino Final"></div>
+        <div class="input-group"><input type="text" class="stop-input" id="p1" placeholder="Pickup Location"></div>
+        <div class="input-group"><input type="text" class="stop-input" id="p2" placeholder="Final Destination"></div>
     </div>
 
-    <button class="btn-add" id="btn-add-text" onclick="addInput()">+ Agregar parada</button>
-    <button class="btn-main" id="calc-btn" onclick="calculate()">Calcular Cotización</button>
+    <button class="btn-add" id="btn-add-text" onclick="addInput()">+ Add stop</button>
+    <button class="btn-main" id="calc-btn" onclick="calculate()">Calculate Quote</button>
 
     <div id="result">
         <div class="price-container">
-            <span style="font-size:14px; color:#64748b; font-weight:600;" id="txt-res-label">Inversión Estimada</span>
+            <span style="font-size:14px; color:#64748b; font-weight:600;" id="txt-res-label">Estimated Investment</span>
             <div class="price-val" id="res-price">$0.00</div>
         </div>
         <div class="details-grid">
-            <div class="detail-card"><span id="txt-dist-label">Distancia</span><b id="res-dist">0 mi</b></div>
-            <div class="detail-card"><span id="txt-time-label">Tiempo</span><b id="res-time">0 min</b></div>
+            <div class="detail-card"><span id="txt-dist-label">Distance</span><b id="res-dist">0 mi</b></div>
+            <div class="detail-card"><span id="txt-time-label">Time</span><b id="res-time">0 min</b></div>
         </div>
         <div class="action-btns">
             <a id="whatsapp" class="action-btn wa" href="#" target="_blank">WhatsApp</a>
@@ -96,47 +97,25 @@ HTML_TEMPLATE = """
 
 <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places"></script>
 <script>
-    let currentLang = 'es';
+    // ESTADO INICIAL: INGLÉS
+    let currentLang = 'en'; 
+
     const translations = {
-        es: { 
-            add: "+ Agregar parada", 
-            calc: "Calcular Cotización", 
-            wait: "Analizando...", 
-            extra: "Parada Extra", 
-            p1: "Punto de Recogida",
-            p2: "Destino Final",
-            res_label: "Inversión Estimada",
-            dist_label: "Distancia",
-            time_label: "Tiempo",
-            wa_header: "*NUEVA SOLICITUD RAPIDWAVE*\\n\\n",
-            wa_origin: "Origen",
-            wa_dest: "Destino",
-            wa_stop: "Parada",
-            wa_stats: "DETALLES",
-            wa_dist: "Distancia",
-            wa_time: "Tiempo (Tráfico)",
-            wa_tolls: "Peajes Incluidos",
-            wa_total: "TOTAL ESTIMADO"
-        },
         en: { 
-            add: "+ Add stop", 
-            calc: "Calculate Quote", 
-            wait: "Analyzing...", 
-            extra: "Extra stop", 
-            p1: "Pickup Location",
-            p2: "Final Destination",
-            res_label: "Estimated Investment",
-            dist_label: "Distance",
-            time_label: "Time",
-            wa_header: "*NEW RAPIDWAVE REQUEST*\\n\\n",
-            wa_origin: "Origin",
-            wa_dest: "Destination",
-            wa_stop: "Stop",
-            wa_stats: "DETAILS",
-            wa_dist: "Distance",
-            wa_time: "Time (Traffic)",
-            wa_tolls: "Tolls Included",
-            wa_total: "ESTIMATED TOTAL"
+            add: "+ Add stop", calc: "Calculate Quote", wait: "Analyzing...", extra: "Extra stop", 
+            p1: "Pickup Location", p2: "Final Destination", res_label: "Estimated Investment",
+            dist_label: "Distance", time_label: "Time", wa_header: "*NEW RAPIDWAVE REQUEST*\\n\\n",
+            wa_origin: "Origin", wa_dest: "Destination", wa_stop: "Stop", wa_stats: "DETAILS",
+            wa_dist: "Distance", wa_time: "Time (Traffic)", wa_tolls: "Tolls Included", wa_total: "ESTIMATED TOTAL",
+            btn_toggle: "ES"
+        },
+        es: { 
+            add: "+ Agregar parada", calc: "Calcular Cotización", wait: "Analizando...", extra: "Parada Extra", 
+            p1: "Punto de Recogida", p2: "Destino Final", res_label: "Inversión Estimada",
+            dist_label: "Distancia", time_label: "Tiempo", wa_header: "*NUEVA SOLICITUD RAPIDWAVE*\\n\\n",
+            wa_origin: "Origen", wa_dest: "Destino", wa_stop: "Parada", wa_stats: "DETALLES",
+            wa_dist: "Distancia", wa_time: "Tiempo (Tráfico)", wa_tolls: "Peajes Incluidos", wa_total: "TOTAL ESTIMADO",
+            btn_toggle: "EN"
         }
     };
 
@@ -157,18 +136,19 @@ HTML_TEMPLATE = """
     }
 
     function toggleLanguage() {
-        currentLang = currentLang === 'es' ? 'en' : 'es';
+        // Alternamos el idioma
+        currentLang = currentLang === 'en' ? 'es' : 'en';
         const t = translations[currentLang];
         
-        // Traducir Interfaz
-        document.getElementById('lang-switch').innerText = currentLang === 'es' ? 'EN' : 'ES';
+        // Actualizar Interfaz
+        document.getElementById('lang-switch').innerText = t.btn_toggle;
         document.getElementById('btn-add-text').innerText = t.add;
         document.getElementById('calc-btn').innerText = t.calc;
         document.getElementById('txt-res-label').innerText = t.res_label;
         document.getElementById('txt-dist-label').innerText = t.dist_label;
         document.getElementById('txt-time-label').innerText = t.time_label;
         
-        // Traducir Placeholders
+        // Actualizar Placeholders
         document.getElementById('p1').placeholder = t.p1;
         document.getElementById('p2').placeholder = t.p2;
         document.querySelectorAll('.stop-input').forEach((input, i) => {
@@ -191,7 +171,6 @@ HTML_TEMPLATE = """
 
         if(stops.length < 2) return;
         btn.disabled = true; 
-        const originalBtnText = btn.innerText;
         btn.innerText = translations[currentLang].wait;
 
         try {
@@ -204,7 +183,7 @@ HTML_TEMPLATE = """
             document.getElementById('res-dist').innerText = `${data.millas} mi`;
             document.getElementById('res-time').innerText = `${data.minutos} min`;
 
-            // CONSTRUCCIÓN DEL MENSAJE DETALLADO BILINGÜE
+            // CONSTRUCCIÓN DEL REPORTE PARA WHATSAPP
             let routeText = "";
             stops.forEach((s, idx) => { 
                 let label = idx === 0 ? t.wa_origin : (idx === stops.length-1 ? t.wa_dest : t.wa_stop);
@@ -249,6 +228,7 @@ def calcular():
     total_duration_traffic = 0
     total_tolls = 0
 
+    # TARIFAS LOGÍSTICA PRIVADA NJ/NY/MD
     BASE_FARE = 5.00
     MIN_FARE = 35.00
     PER_MINUTE = 0.40
@@ -285,4 +265,5 @@ def calcular():
     })
 
 if __name__ == '__main__':
+    # Importante para Render: host 0.0.0.0
     app.run(debug=True, host='0.0.0.0', port=5000)
