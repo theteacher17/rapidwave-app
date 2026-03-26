@@ -5,7 +5,7 @@ import requests
 app = Flask(__name__)
 
 # --- CONFIGURACIÓN ---
-API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "TU_API_KEY_AQUI")
+API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "AIzaSyAEaaRxgJA1SsPTM8C0ihgNMyiyM3B1AHU")
 NUMERO_WHATSAPP = "13478978768"
 NUMERO_SMS = "13478978768"
 
