@@ -5,7 +5,6 @@ import requests
 app = Flask(__name__)
 
 # --- CONFIGURACIÓN ---
-# Render leerá la API KEY de las variables de entorno para mayor seguridad
 API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "AIzaSyAEaaRxgJA1SsPTM8C0ihgNMyiyM3B1AHU")
 NUMERO_WHATSAPP = "13478978768"
 NUMERO_SMS = "13478978768"
@@ -27,7 +26,7 @@ HTML_TEMPLATE = """
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             width: 92%; max-width: 450px; background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(12px); border-radius: 24px; padding: 24px; z-index: 10;
-            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); box-sizing: border-box;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); box-sizing: border-box;
         }
 
         header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
@@ -97,12 +96,11 @@ HTML_TEMPLATE = """
 
 <script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places"></script>
 <script>
-    // ESTADO INICIAL: INGLÉS
     let currentLang = 'en'; 
 
     const translations = {
         en: { 
-            add: "+ Add stop", calc: "Calculate Quote", wait: "Analyzing...", extra: "Extra stop", 
+            add: "+ Add stop", calc: "Calculate Quote", wait: "Analyzing Traffic...", extra: "Extra stop", 
             p1: "Pickup Location", p2: "Final Destination", res_label: "Estimated Investment",
             dist_label: "Distance", time_label: "Time", wa_header: "*NEW RAPIDWAVE REQUEST*\\n\\n",
             wa_origin: "Origin", wa_dest: "Destination", wa_stop: "Stop", wa_stats: "DETAILS",
@@ -110,7 +108,7 @@ HTML_TEMPLATE = """
             btn_toggle: "ES"
         },
         es: { 
-            add: "+ Agregar parada", calc: "Calcular Cotización", wait: "Analizando...", extra: "Parada Extra", 
+            add: "+ Agregar parada", calc: "Calcular Cotización", wait: "Analizando tráfico...", extra: "Parada Extra", 
             p1: "Punto de Recogida", p2: "Destino Final", res_label: "Inversión Estimada",
             dist_label: "Distancia", time_label: "Tiempo", wa_header: "*NUEVA SOLICITUD RAPIDWAVE*\\n\\n",
             wa_origin: "Origen", wa_dest: "Destino", wa_stop: "Parada", wa_stats: "DETALLES",
@@ -136,24 +134,17 @@ HTML_TEMPLATE = """
     }
 
     function toggleLanguage() {
-        // Alternamos el idioma
         currentLang = currentLang === 'en' ? 'es' : 'en';
         const t = translations[currentLang];
-        
-        // Actualizar Interfaz
         document.getElementById('lang-switch').innerText = t.btn_toggle;
         document.getElementById('btn-add-text').innerText = t.add;
         document.getElementById('calc-btn').innerText = t.calc;
         document.getElementById('txt-res-label').innerText = t.res_label;
         document.getElementById('txt-dist-label').innerText = t.dist_label;
         document.getElementById('txt-time-label').innerText = t.time_label;
-        
-        // Actualizar Placeholders
         document.getElementById('p1').placeholder = t.p1;
         document.getElementById('p2').placeholder = t.p2;
-        document.querySelectorAll('.stop-input').forEach((input, i) => {
-            if(i > 1) input.placeholder = t.extra;
-        });
+        document.querySelectorAll('.stop-input').forEach((input, i) => { if(i > 1) input.placeholder = t.extra; });
     }
 
     function addInput() {
@@ -183,20 +174,13 @@ HTML_TEMPLATE = """
             document.getElementById('res-dist').innerText = `${data.millas} mi`;
             document.getElementById('res-time').innerText = `${data.minutos} min`;
 
-            // CONSTRUCCIÓN DEL REPORTE PARA WHATSAPP
             let routeText = "";
             stops.forEach((s, idx) => { 
                 let label = idx === 0 ? t.wa_origin : (idx === stops.length-1 ? t.wa_dest : t.wa_stop);
                 routeText += `📍 *${label}*: ${s}\\n`; 
             });
 
-            const fullMsg = `${t.wa_header}` +
-                            `${routeText}\\n` +
-                            `📊 *${t.wa_stats}:*\\n` +
-                            `- ${t.wa_dist}: ${data.millas} mi\\n` +
-                            `- ${t.wa_time}: ${data.minutos} min\\n` +
-                            `- ${t.wa_tolls}: $${data.tolls}\\n\\n` +
-                            `💰 *${t.wa_total}: $${data.precio}*`;
+            const fullMsg = `${t.wa_header}${routeText}\\n📊 *${t.wa_stats}:*\\n- ${t.wa_dist}: ${data.millas} mi\\n- ${t.wa_time}: ${data.minutos} min\\n- ${t.wa_tolls}: $${data.tolls}\\n\\n💰 *${t.wa_total}: $${data.precio}*`;
 
             document.getElementById('whatsapp').href = `https://wa.me/{{ numero_whatsapp }}?text=${encodeURIComponent(fullMsg)}`;
             document.getElementById('sms').href = `sms:{{ numero_sms }}?body=${encodeURIComponent(fullMsg)}`;
@@ -227,34 +211,58 @@ def calcular():
     total_distance = 0
     total_duration_traffic = 0
     total_tolls = 0
-
-    # TARIFAS LOGÍSTICA PRIVADA NJ/NY/MD
-    BASE_FARE = 5.00
-    MIN_FARE = 35.00
-    PER_MINUTE = 0.40
-    PER_MILE = 1.80
+    
+    # --- NUEVA ESTRUCTURA DE TARIFAS ---
+    BASE_FARE = 10.00        # Subimos base para cubrir tiempo de carga inicial
+    MIN_FARE = 45.00         # En NY menos de $45 es pérdida
+    PER_MINUTE = 0.55        # El tráfico de NY/NJ requiere compensación alta
+    PER_MILE = 2.10          # Desgaste y combustible
+    STOP_FEE = 15.00         # Cada parada extra suma $15 (tiempo de descarga/parking)
 
     for i in range(len(stops)-1):
-        params = {"origin": stops[i], "destination": stops[i+1], "key": API_KEY, "departure_time": "now", "traffic_model": "pessimistic"}
+        params = {
+            "origin": stops[i], 
+            "destination": stops[i+1], 
+            "key": API_KEY, 
+            "departure_time": "now", 
+            "traffic_model": "pessimistic" # Google asume el peor tráfico posible
+        }
         r = requests.get("https://maps.googleapis.com/maps/api/directions/json", params=params).json()
         
         if r.get('status') == 'OK':
             route = r['routes'][0]
             leg = route['legs'][0]
-            total_distance += leg['distance']['value']
-            total_duration_traffic += leg.get('duration_in_traffic', leg['duration'])['value']
             
+            # Obtener datos reales
+            dist_val = leg['distance']['value']
+            time_val = leg.get('duration_in_traffic', leg['duration'])['value']
+            
+            # --- LOGICA DE MULTIPLICADOR POR ZONA CRÍTICA ---
+            # Si el origen o destino es Manhattan (NY), subimos el costo del tiempo un 25%
+            addr_check = (leg['start_address'] + " " + leg['end_address']).upper()
+            multiplier = 1.0
+            if any(x in addr_check for x in ["NEW YORK, NY", "MANHATTAN", "BROOKLYN", "BRONX"]):
+                multiplier = 1.30 # 30% más caro por dificultad de parking y tráfico extremo
+
+            total_distance += dist_val
+            total_duration_traffic += (time_val * multiplier)
+            
+            # PEAJES
             warnings = " ".join(route.get('warnings', [])).lower()
-            addr = (stops[i] + " " + stops[i+1]).upper()
             if 'toll' in warnings:
-                if ' NY ' in addr and ' NJ ' in addr: total_tolls += 17.50
-                elif ' MD ' in addr: total_tolls += 9.50
-                else: total_tolls += 7.00
+                if any(x in addr_check for x in [" NY ", " NJ "]): total_tolls += 18.00
+                elif ' MD ' in addr_check: total_tolls += 10.00
+                else: total_tolls += 8.00
 
     millas = round(total_distance / 1609.34, 2)
     minutos = round(total_duration_traffic / 60, 1)
+    
+    # Calcular costo de paradas adicionales (si hay más de 2 puntos, hay paradas extra)
+    extra_stops_count = max(0, len(stops) - 2)
+    total_stop_cost = extra_stops_count * STOP_FEE
 
-    subtotal = BASE_FARE + (minutos * PER_MINUTE) + (millas * PER_MILE) + total_tolls
+    # Fórmula Final
+    subtotal = BASE_FARE + (minutos * PER_MINUTE) + (millas * PER_MILE) + total_tolls + total_stop_cost
     precio_final = round(max(subtotal, MIN_FARE), 2)
 
     return jsonify({
@@ -265,5 +273,4 @@ def calcular():
     })
 
 if __name__ == '__main__':
-    # Importante para Render: host 0.0.0.0
     app.run(debug=True, host='0.0.0.0', port=5000)
